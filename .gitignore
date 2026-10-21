@@ -1,0 +1,12 @@
+plan.md
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+data/
+*.db
+*.db-*
+.env
+.coverage
+htmlcov/
+test-results/
