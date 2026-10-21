@@ -58,7 +58,7 @@ async function changeGroup() {
   $('participants').replaceChildren(...members.map(user => {
     const row = document.createElement('label');
     const check = document.createElement('input');
-    check.type = 'checkbox'; check.value = user.user_id; check.checked = true;
+    check.type = 'checkbox'; check.value = user.user_id; check.defaultChecked = true;
     row.append(check, document.createTextNode(label(user)));
     return row;
   }));

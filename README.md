@@ -222,7 +222,7 @@ node --check app/static/app.js
 
 Tests create fresh file-backed temporary databases through the actual Alembic migration. They never use the user's database. Coverage includes the assignment dinner/repayment scenario, the worked trip, 500 generated accounting cases, share snapshots, strict money, membership, retry replay/conflicts, full/partial repayment, rollback, foreign keys and raw constraints, separate-connection concurrency, actual write-lock timeout, pagination, group isolation and repeat-seed refusal.
 
-Actual results on Python 3.14.0: **34 pytest tests passed**; exact-money Node checks and JavaScript syntax checks passed. One dependency deprecation warning concerns Starlette's AnyIO alias. Browser workflow/responsive execution is **pending: no browser connection is available**. Docker build/run/recreation is **pending: Docker Desktop's daemon is not running**. These are unverified checks, not claimed passes.
+Actual results on Python 3.14.0: **40 pytest tests passed**; exact-money Node checks and JavaScript syntax checks passed. One dependency deprecation warning concerns Starlette's AnyIO alias. Browser workflow/responsive execution is **pending: no browser connection is available**. Docker build/run/recreation is **pending: Docker Desktop's daemon is not running**. These are unverified checks, not claimed passes.
 
 ## Scope and tradeoffs
 

@@ -176,6 +176,20 @@ def test_concurrent_identical_requests(client, trip, engine):
     assert client.get(f"/groups/{group}/expenses").json()["total"] == 1
 
 
+def test_concurrent_identical_repayments(client, trip, engine):
+    group, ids = trip
+    expense(client, group, ids)
+    key = str(uuid4())
+
+    def send(_):
+        with TestClient(create_app(engine)) as other:
+            return payment(other, group, ids, request_id=key).status_code
+
+    with ThreadPoolExecutor(2) as pool:
+        assert sorted(pool.map(send, range(2))) == [200, 201]
+    assert client.get(f"/groups/{group}/settlements").json()["total"] == 1
+
+
 def test_held_lock_returns_retryable_error(client, trip, engine):
     group, ids = trip
     with transaction(engine, write=True):
@@ -188,3 +202,43 @@ def test_held_lock_returns_retryable_error(client, trip, engine):
 def test_raw_share_integrity(engine, trip):
     with pytest.raises(IntegrityError), transaction(engine, write=True) as connection:
         connection.exec_driver_sql("INSERT INTO expense_shares(expense_id,user_id,share_paise) VALUES (NULL,1,-1)")
+
+
+def test_worked_trip_through_api(client, trip):
+    group, ids = trip
+    expense(client, group, ids)
+    expense(client, group, ids, amount_paise=60000, paid_by=ids[1], participant_ids=ids[1:], description="Taxi")
+    expense(client, group, ids, amount_paise=30000, paid_by=ids[2], participant_ids=[ids[0]], description="Snacks")
+    assert payment(client, group, ids, amount=6000).status_code == 201
+    summary = client.get(f"/groups/{group}/balances").json()
+    assert [member["net_balance_paise"] for member in summary["members"]] == [44000, -4000, -40000]
+    for suggestion in summary["suggested_payments"]:
+        response = client.post(f"/groups/{group}/settlements", json=dict(suggestion, recorded_by=ids[0]))
+        assert response.status_code == 201
+    summary = client.get(f"/groups/{group}/balances").json()
+    assert summary["total_expenses_paise"] == 210000
+    assert summary["total_outstanding_paise"] == 0
+
+
+def test_indirect_settlement_and_cycle(client, trip):
+    group, ids = trip
+    expense(client, group, ids, amount_paise=10000, participant_ids=[ids[1]])
+    expense(client, group, ids, amount_paise=10000, paid_by=ids[2], participant_ids=[ids[0]])
+    summary = client.get(f"/groups/{group}/balances").json()
+    assert summary["suggested_payments"] == [{"from_user": ids[1], "to_user": ids[2], "amount_paise": 10000}]
+    assert payment(client, group, ids, amount=10000, to_user=ids[2]).status_code == 201
+    assert client.get(f"/groups/{group}/balances").json()["suggested_payments"] == []
+    for index, payer in enumerate(ids):
+        expense(client, group, ids, amount_paise=100, paid_by=payer, participant_ids=[ids[(index + 1) % 3]])
+    assert client.get(f"/groups/{group}/balances").json()["suggested_payments"] == []
+
+
+def test_static_page_and_openapi(client):
+    assert client.get("/").status_code == 200
+    assert "Pocket" in client.get("/").text
+    for asset in ("app.js", "money.js", "style.css"):
+        assert client.get("/static/" + asset).status_code == 200
+    schema = client.get("/openapi.json").json()
+    assert schema["info"]["title"] == "Pocket"
+    assert "200" in schema["paths"]["/groups/{group_id}/expenses"]["post"]["responses"]
+    assert "request_fingerprint" not in str(schema)

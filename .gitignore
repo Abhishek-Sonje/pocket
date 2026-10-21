@@ -10,3 +10,4 @@ data/
 .coverage
 htmlcov/
 test-results/
+pytest-cache-files-*/

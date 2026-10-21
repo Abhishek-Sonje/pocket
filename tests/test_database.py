@@ -15,6 +15,30 @@ def test_migration_and_foreign_keys(engine):
         connection.exec_driver_sql("INSERT INTO group_members(group_id,user_id) VALUES (1,1)")
 
 
+def test_migration_matches_models(engine):
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+    from app.models import metadata
+    with engine.connect() as connection:
+        assert compare_metadata(MigrationContext.configure(connection), metadata) == []
+
+
+def test_multi_query_read_keeps_one_snapshot(engine):
+    # WAL lets a writer commit while this reader keeps its earlier snapshot.
+    raw = engine.raw_connection()
+    try:
+        raw.cursor().execute("PRAGMA journal_mode=WAL")
+    finally:
+        raw.close()
+    with transaction(engine) as reader:
+        assert reader.exec_driver_sql("SELECT count(*) FROM users").scalar_one() == 0
+        with transaction(engine, write=True) as writer:
+            writer.exec_driver_sql("INSERT INTO users(name) VALUES ('New member')")
+        assert reader.exec_driver_sql("SELECT count(*) FROM users").scalar_one() == 0
+    with transaction(engine) as reader:
+        assert reader.exec_driver_sql("SELECT count(*) FROM users").scalar_one() == 1
+
+
 @pytest.mark.parametrize("sql", [
     "INSERT INTO users(name) VALUES (' ')",
     "INSERT INTO users(name) VALUES (NULL)",
