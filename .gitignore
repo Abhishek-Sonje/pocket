@@ -1,13 +1,53 @@
-plan.md
+# Local environments and credentials
 .venv/
-__pycache__/
-.pytest_cache/
-*.py[cod]
+venv/
+.env
+.env.*
+!.env.example
+
+# Generated databases and runtime data
 data/
 *.db
 *.db-*
-.env
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Python and tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.tox/
+.nox/
+*.egg-info/
+
+# Coverage and test output
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 test-results/
 pytest-cache-files-*/
+
+# Logs, temporary files and local design tooling
+*.log
+*.tmp
+*.temp
+*.bak
+.DS_Store
+Thumbs.db
+.impeccable/
+.agents/
+.codex/
+
+# Local planning and UI experiments
+/plan.md
+/design.md
+/DESIGN.md
+/scratch/
+/tmp/
+/temp/

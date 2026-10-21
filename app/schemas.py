@@ -5,8 +5,12 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 Id = Annotated[int, Field(strict=True, gt=0, le=2**63 - 1)]
 Money = Annotated[int, Field(strict=True, gt=0, le=2**63 - 1)]
-Name = Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=100)]
-Description = Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=500)]
+Name = Annotated[
+    str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=100)
+]
+Description = Annotated[
+    str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=500)
+]
 
 
 class Request(BaseModel):
@@ -32,8 +36,12 @@ class ExpenseRequest(Request):
     @model_validator(mode="after")
     def participants(self):
         if "participant_ids" in self.model_fields_set:
-            if not self.participant_ids or len(self.participant_ids) != len(set(self.participant_ids)):
-                raise ValueError("Select at least one participant, without duplicates; omit the field for all members.")
+            if not self.participant_ids or len(self.participant_ids) != len(
+                set(self.participant_ids)
+            ):
+                raise ValueError(
+                    "Select at least one participant, without duplicates; omit the field for all members."
+                )
         return self
 
 

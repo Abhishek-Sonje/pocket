@@ -29,8 +29,12 @@ def test_pdf_dinner_and_settlement(client, trip):
     assert response.json()["shares"] == [{"user_id": user, "share_paise": 40000} for user in ids]
     summary = client.get(f"/groups/{group}/balances").json()
     assert summary["suggested_payments"] == [
-        {"from_user": user, "to_user": ids[0], "amount_paise": 40000} for user in ids[1:]]
-    assert client.get(f"/groups/{group}/settlement-suggestions").json()["suggestions"] == summary["suggested_payments"]
+        {"from_user": user, "to_user": ids[0], "amount_paise": 40000} for user in ids[1:]
+    ]
+    assert (
+        client.get(f"/groups/{group}/settlement-suggestions").json()["suggestions"]
+        == summary["suggested_payments"]
+    )
     assert payment(client, group, ids).status_code == 201
     summary = client.get(f"/groups/{group}/balances").json()
     assert [member["net_balance_paise"] for member in summary["members"]] == [40000, 0, -40000]
@@ -39,8 +43,13 @@ def test_pdf_dinner_and_settlement(client, trip):
 
 def test_recorder_participants_and_historical_shares(client, trip):
     group, ids = trip
-    saved = expense(client, group, ids, recorded_by=ids[2], participant_ids=ids[1:], amount_paise=1).json()
-    assert saved["shares"] == [{"user_id": ids[1], "share_paise": 1}, {"user_id": ids[2], "share_paise": 0}]
+    saved = expense(
+        client, group, ids, recorded_by=ids[2], participant_ids=ids[1:], amount_paise=1
+    ).json()
+    assert saved["shares"] == [
+        {"user_id": ids[1], "share_paise": 1},
+        {"user_id": ids[2], "share_paise": 0},
+    ]
     new_user = client.post("/users", json={"name": "Mohit"}).json()["id"]
     client.post(f"/groups/{group}/members", json={"user_id": new_user})
     assert client.get(f"/groups/{group}/expenses").json()["items"][0] == saved
@@ -102,11 +111,19 @@ def test_replay_and_conflict(client, trip):
     new_user = client.post("/users", json={"name": "Later"}).json()["id"]
     client.post(f"/groups/{group}/members", json={"user_id": new_user})
     assert expense(client, group, ids, request_id=request_id).json() == first.json()
-    for changes in (dict(amount_paise=1), dict(description="Other"), dict(paid_by=ids[1]),
-                    dict(recorded_by=ids[1]), dict(participant_ids=ids)):
+    for changes in (
+        dict(amount_paise=1),
+        dict(description="Other"),
+        dict(paid_by=ids[1]),
+        dict(recorded_by=ids[1]),
+        dict(participant_ids=ids),
+    ):
         assert expense(client, group, ids, request_id=request_id, **changes).status_code == 409
     key = str(uuid4())
-    assert expense(client, group, ids, request_id=key, participant_ids=list(reversed(ids))).status_code == 201
+    assert (
+        expense(client, group, ids, request_id=key, participant_ids=list(reversed(ids))).status_code
+        == 201
+    )
     assert expense(client, group, ids, request_id=key, participant_ids=ids).status_code == 200
     key = str(uuid4())
     first = payment(client, group, ids, amount=80000, request_id=key)
@@ -201,19 +218,39 @@ def test_held_lock_returns_retryable_error(client, trip, engine):
 
 def test_raw_share_integrity(engine, trip):
     with pytest.raises(IntegrityError), transaction(engine, write=True) as connection:
-        connection.exec_driver_sql("INSERT INTO expense_shares(expense_id,user_id,share_paise) VALUES (NULL,1,-1)")
+        connection.exec_driver_sql(
+            "INSERT INTO expense_shares(expense_id,user_id,share_paise) VALUES (NULL,1,-1)"
+        )
 
 
 def test_worked_trip_through_api(client, trip):
     group, ids = trip
     expense(client, group, ids)
-    expense(client, group, ids, amount_paise=60000, paid_by=ids[1], participant_ids=ids[1:], description="Taxi")
-    expense(client, group, ids, amount_paise=30000, paid_by=ids[2], participant_ids=[ids[0]], description="Snacks")
+    expense(
+        client,
+        group,
+        ids,
+        amount_paise=60000,
+        paid_by=ids[1],
+        participant_ids=ids[1:],
+        description="Taxi",
+    )
+    expense(
+        client,
+        group,
+        ids,
+        amount_paise=30000,
+        paid_by=ids[2],
+        participant_ids=[ids[0]],
+        description="Snacks",
+    )
     assert payment(client, group, ids, amount=6000).status_code == 201
     summary = client.get(f"/groups/{group}/balances").json()
     assert [member["net_balance_paise"] for member in summary["members"]] == [44000, -4000, -40000]
     for suggestion in summary["suggested_payments"]:
-        response = client.post(f"/groups/{group}/settlements", json=dict(suggestion, recorded_by=ids[0]))
+        response = client.post(
+            f"/groups/{group}/settlements", json=dict(suggestion, recorded_by=ids[0])
+        )
         assert response.status_code == 201
     summary = client.get(f"/groups/{group}/balances").json()
     assert summary["total_expenses_paise"] == 210000
@@ -225,11 +262,20 @@ def test_indirect_settlement_and_cycle(client, trip):
     expense(client, group, ids, amount_paise=10000, participant_ids=[ids[1]])
     expense(client, group, ids, amount_paise=10000, paid_by=ids[2], participant_ids=[ids[0]])
     summary = client.get(f"/groups/{group}/balances").json()
-    assert summary["suggested_payments"] == [{"from_user": ids[1], "to_user": ids[2], "amount_paise": 10000}]
+    assert summary["suggested_payments"] == [
+        {"from_user": ids[1], "to_user": ids[2], "amount_paise": 10000}
+    ]
     assert payment(client, group, ids, amount=10000, to_user=ids[2]).status_code == 201
     assert client.get(f"/groups/{group}/balances").json()["suggested_payments"] == []
     for index, payer in enumerate(ids):
-        expense(client, group, ids, amount_paise=100, paid_by=payer, participant_ids=[ids[(index + 1) % 3]])
+        expense(
+            client,
+            group,
+            ids,
+            amount_paise=100,
+            paid_by=payer,
+            participant_ids=[ids[(index + 1) % 3]],
+        )
     assert client.get(f"/groups/{group}/balances").json()["suggested_payments"] == []
 
 

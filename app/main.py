@@ -19,13 +19,18 @@ STATIC = Path(__file__).parent / "static"
 
 
 def error(status, code, message, details=None):
-    return JSONResponse(status_code=status, content={"error": {
-        "code": code, "message": message, "details": details or []}})
+    return JSONResponse(
+        status_code=status,
+        content={"error": {"code": code, "message": message, "details": details or []}},
+    )
 
 
 def create_app(engine=None):
-    application = FastAPI(title="Pocket", description="Shared expenses and manually recorded repayments.",
-        responses={code: {"model": ErrorResponse} for code in (404, 409, 422, 503)})
+    application = FastAPI(
+        title="Pocket",
+        description="Shared expenses and manually recorded repayments.",
+        responses={code: {"model": ErrorResponse} for code in (404, 409, 422, 503)},
+    )
     application.state.engine = engine if engine is not None else make_engine()
     application.include_router(router)
 
@@ -35,8 +40,10 @@ def create_app(engine=None):
 
     @application.exception_handler(RequestValidationError)
     async def validation_error(_, exc):
-        details = [{"field": ".".join(str(part) for part in item["loc"]), "message": item["msg"]}
-                   for item in exc.errors()]
+        details = [
+            {"field": ".".join(str(part) for part in item["loc"]), "message": item["msg"]}
+            for item in exc.errors()
+        ]
         return error(422, "validation_error", "Check the submitted fields.", details)
 
     @application.exception_handler(HTTPException)
@@ -47,7 +54,9 @@ def create_app(engine=None):
     async def database_error(_, exc):
         code = getattr(exc.orig, "sqlite_errorcode", 0) or 0
         if code & 255 in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
-            return error(503, "database_busy", "Pocket is busy. Retry shortly using the same request ID.")
+            return error(
+                503, "database_busy", "Pocket is busy. Retry shortly using the same request ID."
+            )
         log.error("Database operation failed", exc_info=exc)
         return error(500, "internal_error", "Pocket could not complete this request.")
 

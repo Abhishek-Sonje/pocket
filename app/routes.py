@@ -2,7 +2,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Request, Response
 
-from app import models as m, schemas as s, services
+from app import models as m
+from app import schemas as s
+from app import services
 
 router = APIRouter()
 GroupId = Annotated[int, Path(gt=0, le=2**63 - 1)]
@@ -47,17 +49,27 @@ def members(group_id: GroupId, db: Database):
     return services.list_members(db, group_id)
 
 
-@router.post("/groups/{group_id}/expenses", response_model=s.Expense, status_code=201,
-             responses={200: {"model": s.Expense, "description": "Matching request-ID replay"}})
+@router.post(
+    "/groups/{group_id}/expenses",
+    response_model=s.Expense,
+    status_code=201,
+    responses={200: {"model": s.Expense, "description": "Matching request-ID replay"}},
+)
 def create_expense(group_id: GroupId, body: s.ExpenseRequest, response: Response, db: Database):
     result, replay = services.create_financial(db, group_id, body, expense=True)
     response.status_code = 200 if replay else 201
     return result
 
 
-@router.post("/groups/{group_id}/settlements", response_model=s.Settlement, status_code=201,
-             responses={200: {"model": s.Settlement, "description": "Matching request-ID replay"}})
-def create_settlement(group_id: GroupId, body: s.SettlementRequest, response: Response, db: Database):
+@router.post(
+    "/groups/{group_id}/settlements",
+    response_model=s.Settlement,
+    status_code=201,
+    responses={200: {"model": s.Settlement, "description": "Matching request-ID replay"}},
+)
+def create_settlement(
+    group_id: GroupId, body: s.SettlementRequest, response: Response, db: Database
+):
     result, replay = services.create_financial(db, group_id, body, expense=False)
     response.status_code = 200 if replay else 201
     return result

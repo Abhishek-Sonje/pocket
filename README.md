@@ -1,233 +1,273 @@
 # Pocket
 
-Pocket is a small expense-sharing app built for the Decentro SDE Intern assignment. Create a group, record shared expenses, see who should pay whom, and record full or partial repayments.
+Pocket is an expense-sharing service for the Decentro SDE Intern assignment. Create a group, record shared expenses, see who should pay whom, and record full or partial repayments.
 
-**Pocket only records payments made outside the app.** It does not send money or verify payments or identities. There is no login. Use local/demo data.
+**Pocket records payments that happen outside the app.** It does not send money, verify payments or authenticate identities.
 
-## Run locally
+## Setup and running
 
-Tested with Python **3.14.0** on Windows. Dependencies are pinned in `requirements.txt`. Node is only needed for the standalone JavaScript checks; the app has no frontend build step.
+Use Python 3.14. The local checks were run with Python 3.14.0 on Windows. Direct dependencies are pinned in requirements.txt; requirements-dev.txt includes those dependencies plus pytest, HTTPX and Ruff. Node is needed only for the JavaScript checks. There is no frontend build step.
+
+From the repository root on Windows:
 
 ```powershell
 python -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements.txt
+.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
 .venv/Scripts/python.exe -m alembic upgrade head
 .venv/Scripts/python.exe -m uvicorn app.main:app --reload
 ```
 
-On macOS/Linux use `.venv/bin/python` in place of `.venv/Scripts/python.exe`.
+On macOS/Linux:
 
-Open [Pocket](http://localhost:8000), [interactive API docs](http://localhost:8000/docs), [ReDoc](http://localhost:8000/redoc), or [OpenAPI JSON](http://localhost:8000/openapi.json).
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m alembic upgrade head
+.venv/bin/python -m uvicorn app.main:app --reload
+```
 
-The database defaults to `data/pocket.db`. Set `POCKET_DATA_DIR` to choose a persistent directory. Migrate and start with the same environment. Startup never creates tables or seeds records automatically.
+For runtime-only installation, use requirements.txt instead. Open [Pocket](http://localhost:8000), [API docs](http://localhost:8000/docs), [ReDoc](http://localhost:8000/redoc) or [OpenAPI JSON](http://localhost:8000/openapi.json).
 
-Optional demo seed, **after migration and before entering other data**:
+The database defaults to data/pocket.db and is created by the migration. Application startup does not migrate, create tables or seed automatically. Run commands from the repository root.
+
+### Configuration
+
+| Environment variable | Default | Purpose |
+| --- | --- | --- |
+| POCKET_DATA_DIR | data | Directory containing pocket.db |
+| POCKET_BUSY_MS | 5000 | SQLite lock wait in milliseconds |
+
+The app reads process environment variables. It does **not** load .env files automatically. [.env.example](.env.example) documents optional nonsecret values; set them in your shell before migration, seeding and startup.
+
+```powershell
+$env:POCKET_DATA_DIR = "data"
+$env:POCKET_BUSY_MS = "5000"
+```
+
+On macOS/Linux, use export POCKET_DATA_DIR=data and export POCKET_BUSY_MS=5000. Migrations and the app must use the same storage directory.
+
+### Explicit demo seed
+
+After migration, before entering other data:
 
 ```powershell
 .venv/Scripts/python.exe -m app.seed
 ```
 
-This creates Goa Trip with Mohit, Rahul and Ankit and the dinner/taxi/snacks example below. It refuses a nonempty database, rolls back on failure and never duplicates data. Restarting the server preserves records.
+Use .venv/bin/python on macOS/Linux. The seed creates Goa Trip, Mohit, Rahul and Ankit, plus Dinner Rs 1,200 for everyone paid by Mohit, Taxi Rs 600 for Rahul and Ankit paid by Rahul, and Snacks Rs 300 for Mohit paid by Ankit. Total spending is Rs 2,100. Initial remaining balances are Mohit +Rs 500, Rahul -Rs 100 and Ankit -Rs 400.
 
-## Docker
+Seeding is atomic and refuses any database containing users or groups. Running it twice returns a nonzero exit on the second run without duplicating records. Restarting the app never seeds automatically.
+
+## UI flow
+
+Create a group on the home page. An open group has a sticky back/group-switcher header, a spending total and a labeled remaining-status pill.
+
+1. Add people by name in one click, or select an existing user. Duplicate names receive IDs only when needed.
+2. Add an expense with a rupee amount and payer. All members start selected; uncheck participants if appropriate. Everyone selects all again. At least one participant is required. Advanced contains Entered by, defaulting to the payer.
+3. Review suggested payments and member spending/share/status. Mark as paid opens an editable amount with Save and Cancel; opening it records nothing. Save records a payment already completed outside Pocket. Partial repayments and a separate From/To/Amount form are supported.
+4. Switch Activity between expenses and repayments. Each view shows the newest 50 entries with recorder details.
+
+Pending writes disable submit controls. An unchanged retry retains its request ID after failure; edited or new submissions receive a new ID. Retry state lasts for the open page, not across reloads. Successful writes refresh totals, suggestions, balances and activity. The static interface and licensed font are served locally, with no CDN or external runtime assets. See [UI design](docs/ui-design.md).
+
+## Docker and persistence
+
+Docker uses Python 3.14-slim and installs the same pinned runtime requirements. Test and lint packages are excluded from the runtime image.
 
 ```sh
 docker compose up --build -d
-# Optional: seed the fresh database once
 docker compose exec pocket python -m app.seed
 docker compose down
 docker compose up -d
 ```
 
-The named `pocket-data` volume is mounted at `/data`. Compose prefixes the volume name with its project name. Restarting or recreating the container preserves records; `docker compose down -v` deletes the volume and its records. The container applies migrations before starting one Uvicorn worker. No automatic demo seed runs.
+The seed command is optional and requires an empty migrated database. The container command applies Alembic migrations before starting one Uvicorn worker on port 8000.
 
-## Using the page
+Compose mounts the named pocket-data volume at /data. Its actual name is prefixed by the Compose project name. Stopping or recreating the container retains data. docker compose down -v deletes the volume and its records. No database or local virtual environment is included in the source submission or image build context.
 
-1. Create a group. Expand **Manage people**, create users, and add them to the group. Existing users can join multiple groups. Labels include IDs because duplicate names are allowed.
-2. Choose **Adding as**. This records who entered an expense or repayment, not verified identity.
-3. Enter an expense in rupees. **Did you pay?** defaults to Yes. Choose No to select a different payer. All current members start selected as participants; uncheck people or use **Clear all**. Select at least one before saving. The payer may be excluded.
-4. Review paid-upfront amounts, personal shares, remaining balances and suggested payments. **Use amount** fills the repayment form; it does not record a payment.
-5. Once someone has paid outside Pocket, explicitly save the repayment. Partial repayments are supported. Histories include the recorder and saved expense shares, with Previous/Next controls.
+## Architecture and schema
 
-Controls prevent repeated submission while a write is pending. An unchanged retry retains its request ID after a failure; editing the form, changing the recorder or starting a new submission assigns a new ID. This retry state lasts for the open page, not across reloads. Successful writes refresh balances, suggestions and both histories. Names and descriptions are rendered as text.
+FastAPI handles HTTP, Pydantic validates inputs, SQLAlchemy Core manages records and SQLite provides persistence. Services own transactions; accounting is pure integer logic. No mutable balance table, background worker, cache or separate frontend service is needed.
 
-## Accounting and money
+| Module | Responsibility |
+| --- | --- |
+| app/main.py | Application factory, errors, static page and generated API documentation |
+| app/routes.py, app/schemas.py | Endpoint contracts, strict inputs and typed outputs |
+| app/services.py | Existence/membership checks, transactions, retry lookup and histories |
+| app/accounting.py | Equal splits, net summaries and deterministic payment suggestions |
+| app/database.py | Connections, foreign keys and explicit transaction boundaries |
+| app/models.py | Six tables, relationships, checks and indexes |
+| migrations/versions/001_initial.py | Fixed initial schema, independent of current application models |
+| app/seed.py | Explicit atomic demo seed |
+| app/static/ | HTML, CSS, JavaScript and local licensed font |
 
-INR only. API and storage use **integer paise**, never floating-point rupees. `120000` paise is ₹1,200.00. Stored positive amounts are at most `9223372036854775807`; derived group totals use Python integers and may exceed that per-record limit. API amounts reject strings, floats, booleans, zero, negative numbers and values outside the stored range.
+| Table | Important columns and constraints |
+| --- | --- |
+| users | Integer id; trimmed nonblank name up to 100 characters; duplicate names allowed |
+| groups | Integer id; same name rules |
+| group_members | Non-null composite PK (group_id, user_id), group/user FKs and UTC joined_at |
+| expenses | Integer id; group, payer, recorder, positive integer amount_paise, trimmed description up to 500 characters, UTC timestamp, optional retry metadata |
+| expense_shares | Non-null composite PK (expense_id, user_id), expense/user FKs and nonnegative integer share_paise |
+| settlements | Integer id; group, sender, recipient, recorder, positive integer amount, UTC timestamp and optional retry metadata; sender differs from recipient |
 
-The page converts decimal strings using `BigInt`, rejects more than two fractional digits and emits exact JSON integer tokens. Incoming integer JSON tokens are preserved as strings before parsing, then formatted with `BigInt`; even amounts beyond JavaScript's safe-number range retain every paisa. IDs are likewise preserved. No binary-float multiplication or silent rounding is used.
+Payer, recorder, sender and recipient use composite membership foreign keys. Foreign keys are enabled on every application, migration, seed and test connection. SQLite typeof checks enforce integer money storage. All columns are non-null except the retry ID/fingerprint pair, which must be present or absent together. Unique request IDs allow multiple nulls. Default restrictive deletion protects financial history.
 
-For equal splitting, sort participant IDs, assign `amount // count` to each, then one extra paisa to the first `amount % count` IDs. ₹100.00 / 3 becomes ₹33.34, ₹33.33, ₹33.33. One paisa / 3 creates all three share rows: 1, 0, 0. The fixed tie-break slightly biases remainder assignment toward lower IDs; rotation is deliberately excluded.
+History indexes use (group_id, created_at, id) on expenses and settlements; shares have a user_id index. Participant membership, share sums and repayment caps are cross-row rules enforced by services inside atomic writes. Raw SQL can bypass these cross-row rules; row checks and foreign keys still apply.
 
-Omitting `participant_ids` splits among all members **at creation time**. An explicit list selects beneficiaries and can exclude the payer. Empty, duplicate or null lists fail. Historical shares are saved and never recomputed when membership changes. `paid_by` receives credit; `recorded_by` receives none merely for entering a record.
+See [architecture and decisions](docs/architecture.md) for the full design.
 
-For every member:
+## Money, balances and assumptions
+
+INR only. API and storage use **integer paise**, not floating-point rupees: amount_paise 120000 means Rs 1,200.00. The UI accepts rupees with up to two decimals and formats exactly two decimals using BigInt/string conversion. Its exact JSON handling preserves integers beyond JavaScript's safe-number limit.
+
+Stored positive amounts are limited to 9223372036854775807. Numeric strings, floats, booleans, zero, negatives and larger stored amounts are rejected. Derived group totals use Python integers and may exceed the per-record storage limit.
+
+Equal splits sort participant IDs, assign amount // count to each, then one extra paisa to the first amount % count IDs. Rs 100.00 shared by three becomes Rs 33.34, Rs 33.33 and Rs 33.33. A one-paisa expense shared by three preserves shares 1, 0 and 0. This deterministic rule has a small fixed-ID remainder bias.
+
+Omitting participant_ids selects all current members at creation. Explicit subsets can exclude the payer. Empty, null, duplicate and nonmember selections fail. Saved shares never change when members are added. paid_by gets spending credit; recorded_by only records who entered the event.
 
 ```text
 net_balance_paise = paid_paise - share_paise
                   + repayments_sent_paise - repayments_received_paise
 ```
 
-Positive means should receive; negative means owes; zero means currently settled. Every member appears, including members with no activity. The sum of net balances is zero. Personal shares and upfront payments each sum to total group expenses. Outstanding is the sum of positive net balances. Repayments change remaining balances but never trip spending or historical shares.
+Positive means gets back, negative means owes and zero means settled. Every member appears in the summary. Net balances sum to zero; total outstanding is the sum of positive balances. Repayments never alter trip spending or historical shares. Current obligations use group net positions, so valid indirect repayments can clear obligations without following original expense pairs.
 
-Current obligations are group net positions. If Rahul owes Mohit ₹100 and Mohit owes Ankit ₹100, Rahul can repay Ankit ₹100 and clear everyone. Original records remain in history; original expense pairs are not displayed as still payable afterward. Groups never cancel each other's debts.
+Names may repeat. Empty and one-member groups are supported. Identity and payments are unverified. Financial history is creation-only; there is no editing, deletion, reversal or member removal. Unequal custom amounts, currency conversion, categories and authentication are outside scope.
 
-## Product enhancement
+## Mandatory enhancement and bonus
 
-**Smart settlement suggestions are the mandatory product enhancement.** At the end of a trip, members need concrete payment routes, not just totals. Both `/balances` and `/settlement-suggestions` show sender, recipient and amount from the same accounting function.
+**Smart settlement suggestions are the mandatory enhancement.** A remaining balance alone leaves members asking whom to pay. Concrete sender/recipient/amount routes make it possible to close a group's accounts without manual matching.
 
-The algorithm initially sorts debtors and creditors by outstanding magnitude descending, then user ID ascending. Two pointers match the smaller remaining debt/credit; lists are not re-sorted after transfers. It is deterministic, uses exact integers, runs in O(n log n), and clears all net balances. It is **not guaranteed to minimize transfer count globally**. Suggestions are calculated, never stored or automatically recorded.
+The algorithm sorts debtors and creditors by initial outstanding magnitude descending, then user ID ascending. Two pointers match the smaller remaining debt or credit and advance when a side reaches zero. It does not re-sort after transfers. The calculation is deterministic, exact, O(n log n), and shared by the balances and settlement-suggestions endpoints.
 
-**Repayment recording is the included optional settlement bonus.** Any member may record a transfer between a current debtor and creditor. The amount cannot exceed either remaining debt or credit. Self-payments, nonmembers and invalid amounts fail. No confirmation or bank verification is implied. Participant selection, personal summaries and the web interface are additional improvements.
+This trades globally minimal transfer count for a small, reproducible algorithm. It produces a valid clearing plan but does not guarantee the fewest possible transfers. Suggestions are calculated, never stored or recorded automatically.
 
-The seeded regression trip is:
+**Repayment recording is the included bonus.** Full and partial repayments reduce remaining debt while preserving original expense history. Any member can record a payment, but sender and recipient must be a current debtor and creditor, and the amount cannot exceed either remaining position. Participant selection, personal summaries and the UI are additional features.
 
-| Expense | Amount | Payer | Participants |
-|---|---:|---|---|
-| Dinner | ₹1,200 | Mohit | All three |
-| Taxi | ₹600 | Rahul | Rahul, Ankit |
-| Snacks | ₹300 | Ankit | Mohit |
+## Transactions and retry protection
 
-Everyone's personal share is ₹700. Nets are Mohit +₹500, Rahul −₹100, Ankit −₹400. After Rahul repays Mohit ₹60, suggestions are Ankit → Mohit ₹400, then Rahul → Mohit ₹40. Trip expenses stay ₹2,100.
+Each service operation uses an independent connection. SQLite driver implicit BEGIN is disabled; SQLAlchemy explicitly issues BEGIN for reads and BEGIN IMMEDIATE for writes. Writes reserve the database before replay lookup and balance validation. Expense/share writes roll back together, and overlapping repayments serialize before their limits are checked.
 
-## Architecture and schema
+Multi-query summaries and history counts/pages share a read snapshot. Totals are summed in Python to avoid SQLite aggregate overflow. Exhausting the configured lock wait returns retryable HTTP 503.
 
-Ordinary synchronous FastAPI + SQLAlchemy Core + SQLite; no separate frontend, workers, cache or mutable balances.
+Financial requests optionally accept a UUID request_id. Matching ID/input returns the original record with 200; a new creation returns 201; changed input with the same ID returns 409. IDs are unique across groups within each financial table, with separate expense and repayment namespaces.
 
-| File | Responsibility |
-|---|---|
-| `app/main.py` | App creation, error handlers, static page |
-| `app/routes.py` | HTTP inputs, response models, replay status |
-| `app/schemas.py` | Strict inputs and documented outputs |
-| `app/services.py` | Transactions, membership/existence checks, retry lookup, history, financial writes |
-| `app/accounting.py` | Pure integer splits, summaries and suggestions |
-| `app/database.py` | Connections, foreign keys, explicit transaction boundaries |
-| `app/models.py` | Six table definitions and indexes |
-| `migrations/versions/001_initial.py` | Fixed initial schema, independent of application models |
-| `app/seed.py` | Explicit, atomic demo initialization |
-| `app/static/` | Single page, CSS and minimal JavaScript |
+An atomic SHA-256 fingerprint covers validated input and group context, trims descriptions and sorts explicit participants. Omitted participants retain an omitted-default marker. Replay is checked before current-state membership or balance validation, so an uncertain payment can be retried even after its original request cleared the debt. Fingerprints are not exposed.
 
-| Table | Columns and integrity |
-|---|---|
-| `users` | Integer PK `id`, trimmed nonblank `name` ≤100; names need not be unique |
-| `groups` | Integer PK `id`, same name rules |
-| `group_members` | Non-null composite PK `(group_id,user_id)`, FKs to groups/users, server UTC `joined_at` |
-| `expenses` | Integer PK, group FK, payer, recorder, positive integer `amount_paise`, trimmed description ≤500, server UTC `created_at`, optional unique `request_id` and fingerprint |
-| `expense_shares` | Non-null composite PK `(expense_id,user_id)`, expense/user FKs, nonnegative integer `share_paise` |
-| `settlements` | Integer PK, group FK, sender, recipient, recorder, positive integer amount, UTC timestamp, optional unique request ID and fingerprint; sender differs from recipient |
-
-Payer/recorder/sender/recipient use composite membership FKs `(group_id,user_id)`. All columns are non-null except retry metadata, which must be present or absent together. SQLite `typeof` checks enforce integer money storage. Foreign keys are enabled on every application, migration, seed and test connection. Default restrictive deletion preserves financial history. Timestamps use sortable UTC ISO text.
-
-History indexes are `(group_id,created_at,id)` on expenses and settlements. Shares have a `user_id` index. Primary keys enforce membership/share uniqueness; unique request IDs allow multiple NULLs. No redundant balance or suggestion tables exist.
-
-Participant membership, share sums and repayment balance caps are **service-only cross-row invariants** checked inside atomic writes. Raw SQL can violate these invariants even though row checks/FKs remain enforced. This keeps the small assignment understandable instead of adding sum-maintaining triggers.
-
-## Transactions and retries
-
-Services own one transaction per operation. Each call uses an independent connection. SQLite driver implicit BEGIN is disabled, and the SQLAlchemy begin event explicitly emits `BEGIN` for reads or `BEGIN IMMEDIATE` for writes. Financial writes acquire the write reservation before replay lookup, membership reads or balance checks. A failure rolls back the expense and every share together. Concurrent overlapping repayments serialize; a second request sees the first payment's result before checking its cap.
-
-Multi-query balances and history counts/pages share a read transaction and snapshot, without a write reservation. Totals are summed in Python to avoid SQLite aggregate overflow. SQLite serializes writes; this single-instance tradeoff is suitable for the assignment. A bounded wait defaults to 5 seconds (`POCKET_BUSY_MS` overrides it); exhausted locks return retryable 503.
-
-Optional `request_id` is a UUID, unique across groups within each financial table; expense/repayment namespaces are separate. A SHA-256 fingerprint covers validated input and group context, trims descriptions and sorts explicit participants. Omitted participants remain an omitted-default marker instead of being expanded during retry comparison. Matching replay returns the original saved resource with 200 **before** checking today's membership/balances. Changed input returns 409. Metadata is saved atomically and fingerprints never appear in responses/OpenAPI.
-
-Without an ID, every accepted request creates a new record: **there is no duplicate-retry protection**. Retry uncertain financial requests with the same ID and input.
+Requests without IDs have **no duplicate-retry protection**. Reuse the same ID and input when retrying an uncertain financial request.
 
 ## API
 
-All bodies are JSON. Unknown body fields fail validation. User and group lists are simple arrays; member lists are ordered by ID. Responses use the documented integer fields. See `/docs` for full response schemas.
+All bodies are JSON. Unknown fields fail validation. Interactive request and response schemas are available at /docs.
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST / GET | `/users` | Create / list users |
-| POST / GET | `/groups` | Create / list groups |
-| POST / GET | `/groups/{id}/members` | Add existing user / list members |
-| POST / GET | `/groups/{id}/expenses` | Save expense and shares / history |
-| POST / GET | `/groups/{id}/settlements` | Record repayment / history |
-| GET | `/groups/{id}/balances` | Totals, every member summary and suggested payment routes |
-| GET | `/groups/{id}/settlement-suggestions` | Focused `{group_id,suggestions}` response |
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| POST / GET | /users | Create / list users |
+| POST / GET | /groups | Create / list groups |
+| POST / GET | /groups/{id}/members | Add existing user / list members |
+| POST / GET | /groups/{id}/expenses | Record expense/shares / history |
+| POST / GET | /groups/{id}/settlements | Record repayment / history |
+| GET | /groups/{id}/balances | Totals, members and explicit suggested payment routes |
+| GET | /groups/{id}/settlement-suggestions | Focused clearing suggestions |
 
-Creation returns 201; matching financial replay returns 200. Missing group/user → 404. Invalid syntax, money, UUID, membership, self-payment or participant selection → 422. Existing membership, conflicting request ID or incompatible/excessive repayment → 409. Exhausted SQLite lock wait → 503. Unexpected failures → 500 without SQL or stack traces in responses.
+Missing records return 404. Invalid syntax, money, UUID, participants, membership or self-payment return 422. Duplicate membership, reused ID with changed input, and incompatible/excessive repayment return 409. Lock timeout returns 503. Unexpected failures return 500 without exposing SQL or stack traces.
 
-Validation order: syntax → replay lookup → group existence → all referenced users exist → membership → balance limits. Existing nonmembers yield 422; nonexistent users yield 404.
-
-Consistent error envelope (framework validation adds field details):
+Error envelope:
 
 ```json
 {"error":{"code":"repayment_exceeds_balance","message":"This repayment exceeds the remaining debt or credit.","details":[]}}
 ```
 
-Financial histories accept `?limit=50&offset=0`, with limit 1–100 and offset ≥0. Newest UTC timestamp, then ID descending. Response: `{ "items": [...], "total": 12, "limit": 50, "offset": 0 }`. Expense items include sorted saved `shares`; both kinds include `recorded_by`. Offset pagination is intentionally simple: new records may shift later pages.
+Validation order is syntax, replay lookup, group existence, user existence, membership and balance limits. Existing nonmembers return 422; nonexistent users return 404.
 
-### Copyable assignment walkthrough
+Histories accept limit from 1 to 100, default 50, and nonnegative offset, default zero. They sort by UTC created_at descending, then id descending, and return items, total, limit and offset. Expenses include saved shares; both histories include recorded_by. New entries can shift offset-based pages.
 
-Run against a **fresh migrated database without the demo seed**. The following Python uses only the standard library and retains created IDs, so it does not assume sequence values. Save as a temporary script or paste into Python while the server runs:
+### Copyable PDF dinner walkthrough
 
-```python
-import json
-from urllib.request import Request, urlopen
+Run the server against a migrated database. This Bash example uses curl and Python 3 to retain returned IDs, so it does not assume an empty ID sequence. On systems where the executable is python3, change the json_id helper accordingly. The example creates its own new users and Goa Trip group; it does not require seeding.
 
-def api(path, body=None):
-    request = Request("http://localhost:8000" + path,
-        data=None if body is None else json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"})
-    with urlopen(request) as response:
-        return json.load(response)
+```bash
+set -euo pipefail
+BASE=http://127.0.0.1:8000
+json_id() { python -c 'import json,sys; print(json.load(sys.stdin)["id"])'; }
+post() {
+  curl --fail-with-body --silent --show-error     -H 'Content-Type: application/json' --data "$2" "$BASE$1"
+}
 
-mohit, rahul, ankit = [api("/users", {"name": name})["id"]
-                       for name in ("Mohit", "Rahul", "Ankit")]
-group = api("/groups", {"name": "Goa Trip"})["id"]
-for user in (mohit, rahul, ankit):
-    api(f"/groups/{group}/members", {"user_id": user})
+MOHIT=$(post /users '{"name":"Mohit"}' | json_id)
+RAHUL=$(post /users '{"name":"Rahul"}' | json_id)
+ANKIT=$(post /users '{"name":"Ankit"}' | json_id)
+GROUP=$(post /groups '{"name":"Goa Trip"}' | json_id)
 
-# Omission exercises the required default: all current members.
-expense = api(f"/groups/{group}/expenses", {
-    "paid_by": mohit, "recorded_by": mohit,
-    "amount_paise": 120000, "description": "Dinner"})
-assert expense["shares"] == [{"user_id": user, "share_paise": 40000}
-                             for user in sorted((mohit, rahul, ankit))]
-balance = api(f"/groups/{group}/balances")
-assert balance["suggested_payments"] == [
-    {"from_user": user, "to_user": mohit, "amount_paise": 40000}
-    for user in sorted((rahul, ankit))]
-api(f"/groups/{group}/settlements", {
-    "from_user": rahul, "to_user": mohit, "recorded_by": rahul,
-    "amount_paise": 40000})
-balance = api(f"/groups/{group}/balances")
-assert {m["user_id"]: m["net_balance_paise"] for m in balance["members"]} == {
-    mohit: 40000, rahul: 0, ankit: -40000}
-print(json.dumps(balance, indent=2))
+for USER in "$MOHIT" "$RAHUL" "$ANKIT"; do
+  post "/groups/$GROUP/members" "{\"user_id\":$USER}"
+  echo
+done
+
+# Omit participant_ids to use all current members.
+post "/groups/$GROUP/expenses"   "{\"description\":\"Dinner\",\"amount_paise\":120000,\"paid_by\":$MOHIT,\"recorded_by\":$MOHIT}"
+echo
+
+curl --fail-with-body --silent --show-error "$BASE/groups/$GROUP/balances"
+echo
+# Three saved shares of 40000.
+# Suggestions: Rahul to Mohit 40000, Ankit to Mohit 40000.
+
+post "/groups/$GROUP/settlements"   "{\"from_user\":$RAHUL,\"to_user\":$MOHIT,\"recorded_by\":$RAHUL,\"amount_paise\":40000}"
+echo
+curl --fail-with-body --silent --show-error "$BASE/groups/$GROUP/balances"
+echo
+# Mohit +40000, Rahul 0, Ankit -40000.
+# Only Ankit to Mohit 40000 remains; total expenses stay 120000.
 ```
 
-The original PDF's rupee `amount: 1200` becomes `amount_paise: 120000`. Group context is in the URL and `recorded_by` is an additional required field. These deliberate API variations prevent ambiguous money units, keep operations group-scoped and distinguish entry from payment. The literal PDF body is not accepted unchanged.
+The assignment's rupee amount 1200 becomes amount_paise 120000. The group belongs in the URL, and recorded_by is an additional required field. These intentional variations provide unambiguous units, group boundaries and a distinction between payer and recorder. The literal PDF request body is not accepted unchanged.
 
-Example expense with selected participants and retry protection:
+For retry-protected submissions, add a UUID request_id to an expense or repayment body and retain it for an unchanged retry.
 
-```json
-{"paid_by":1,"recorded_by":2,"amount_paise":120000,"description":"Dinner","participant_ids":[1,2,3],"request_id":"11111111-1111-4111-8111-111111111111"}
-```
+## Tests and code quality
 
-Example saved expense:
-
-```json
-{"id":1,"group_id":1,"paid_by":1,"recorded_by":2,"amount_paise":120000,"description":"Dinner","created_at":"2026-10-21T12:00:00.000Z","shares":[{"user_id":1,"share_paise":40000},{"user_id":2,"share_paise":40000},{"user_id":3,"share_paise":40000}]}
-```
-
-## Verification
+Windows commands:
 
 ```powershell
 .venv/Scripts/python.exe -m pytest -q
+.venv/Scripts/python.exe -m ruff check .
+.venv/Scripts/python.exe -m ruff format --check .
 node tests/money.test.cjs
 node --check app/static/app.js
+node --check app/static/money.js
 ```
 
-Tests create fresh file-backed temporary databases through the actual Alembic migration. They never use the user's database. Coverage includes the assignment dinner/repayment scenario, the worked trip, 500 generated accounting cases, share snapshots, strict money, membership, retry replay/conflicts, full/partial repayment, rollback, foreign keys and raw constraints, separate-connection concurrency, actual write-lock timeout, pagination, group isolation and repeat-seed refusal.
+Use .venv/bin/python on macOS/Linux. To format Python, run python -m ruff format . with the virtual environment active. Ruff configuration is in pyproject.toml.
 
-Actual results on Python 3.14.0: **40 pytest tests passed**; exact-money Node checks and JavaScript syntax checks passed. One dependency deprecation warning concerns Starlette's AnyIO alias. Browser workflow/responsive execution is **pending: no browser connection is available**. Docker build/run/recreation is **pending: Docker Desktop's daemon is not running**. These are unverified checks, not claimed passes.
+Tests use fresh temporary databases initialized through Alembic. They cover the dinner and larger trip examples, 500 generated accounting cases, shares, strict validation, full/partial repayment, retry replay/conflicts, rollback, foreign keys, raw constraints, read snapshots, separate-connection concurrency, real lock contention, histories, group isolation and seed refusal.
 
-## Scope and tradeoffs
+## Verification
 
-No authentication, verified payments, editing/deletion/reversal, member removal, custom unequal amounts, categories or currency conversion. Financial records are creation-only; new expenses can create new obligations after a group settles. One-member and empty groups are supported. Duplicate names are intentional.
+Actual submission checks on 22 October 2026:
 
-Suggestions trade global transfer optimality for a small deterministic algorithm. SQLite trades write throughput for simple persistence. Service checks trade trigger complexity for explicit transactional validation. Remainder distribution has a fixed-ID bias; offset pages may shift.
+| Check | Result |
+| --- | --- |
+| Full pytest suite, Windows Python 3.14.0 | 40 passed; one third-party Starlette/AnyIO deprecation warning |
+| Ruff 0.14.1 check and format --check | Passed; all 18 Python files formatted |
+| Node exact-money and both JavaScript syntax checks | Passed |
+| Fresh Alembic migration | Passed; revision 001 and six application tables |
+| Explicit seed run twice | First succeeded; second refused with a nonzero exit, with all table counts unchanged |
+| Real localhost Uvicorn dinner scenario | Passed: three Rs 400 shares; Rahul and Ankit routes; Rahul repayment leaves only Ankit |
+| Real HTTP partial repayment and retry | Passed: Ankit Rs 150 repayment leaves Rs 250; replay creates no duplicate |
+| Concurrent identical real HTTP expense requests | HTTP 201 and 200, one expense record |
+| Docker image build and local run, Python 3.14.8 | Passed; runtime pip check passed |
+| README curl walkthrough against Docker | Passed with only the host port changed to 18000 |
+| Docker container recreation using the same named volume | Passed; saved balances and records preserved |
+| Docker Compose configuration | Valid |
+| Git diff whitespace check | Passed |
 
-With more time: authenticated identity, carefully designed corrections/reversals, repayment verification and a database suited to multiple instances. These are future scope, not unfinished required features.
+Python logic ASTs, excluding module import organization, and all static asset bytes were compared before and after cleanup: unchanged. Tests received formatting and import organization only; assertions and intent were retained.
+
+Browser rendering, keyboard interaction and responsive checks were not run because no connected browser was available. HTTP/static-asset checks do not substitute for those checks. Verification servers, test databases, container and test volume were cleaned up; no database is shipped.
+
+## Tradeoffs and future improvements
+
+SQLite serializes writes and suits one application instance; a multi-instance service would need a more suitable database/deployment model. Service checks keep cross-row validation explicit instead of introducing sum triggers. Deterministic remainders have fixed-ID bias. Greedy matching does not guarantee minimal transfers. Offset pagination can shift when new records arrive.
+
+With more time: authenticated identity, a carefully designed correction/reversal workflow, stronger repayment verification and scaling beyond a single SQLite instance. These are future extensions, not claims about current capabilities.

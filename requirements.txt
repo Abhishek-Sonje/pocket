@@ -3,5 +3,3 @@ uvicorn==0.38.0
 SQLAlchemy==2.0.44
 alembic==1.17.0
 pydantic==2.12.3
-pytest==8.4.2
-httpx==0.28.1

@@ -1,4 +1,5 @@
 import pytest
+
 from app.seed import seed
 from app.services import balances
 

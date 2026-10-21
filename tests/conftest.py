@@ -20,14 +20,17 @@ def engine(tmp_path):
 @pytest.fixture
 def client(engine):
     from app.main import create_app
+
     with TestClient(create_app(engine)) as client:
         yield client
 
 
 @pytest.fixture
 def trip(client):
-    ids = [client.post("/users", json={"name": name}).json()["id"]
-           for name in ("Mohit", "Rahul", "Ankit")]
+    ids = [
+        client.post("/users", json={"name": name}).json()["id"]
+        for name in ("Mohit", "Rahul", "Ankit")
+    ]
     group = client.post("/groups", json={"name": "Goa Trip"}).json()["id"]
     for user in ids:
         assert client.post(f"/groups/{group}/members", json={"user_id": user}).status_code == 201
