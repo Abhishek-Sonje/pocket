@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#244d3d">
+  <title>Pocket — shared expenses</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/money.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header><a class="brand" href="/">Pocket<span>Shared expenses, clearly.</span></a><a href="/docs">API docs</a></header>
+  <main>
+    <h1>A shared trip.<br>A clear balance.</h1>
+    <p class="intro">Keep track of what everyone spent and what’s left to settle. Record payments made outside Pocket.</p>
+    <p id="message" role="status" aria-live="polite"></p>
+    <section class="setup" aria-labelledby="group-heading">
+      <h2 id="group-heading">Your group</h2>
+      <div class="columns">
+        <label>Choose a group<select id="group"><option value="">Create a group to begin</option></select></label>
+        <form id="group-form"><label>New group<input name="name" maxlength="100" placeholder="e.g. Goa Trip" required></label><button>Create group</button></form>
+      </div>
+      <details><summary>Manage people</summary>
+        <div class="columns">
+          <form id="user-form"><label>New person<input name="name" maxlength="100" required></label><button>Create person</button></form>
+          <form id="member-form"><label>Add an existing person<select id="user" required></select></label><button>Add to group</button></form>
+        </div>
+        <p id="member-list" class="muted">No members yet.</p>
+      </details>
+    </section>
+    <div id="workspace" hidden>
+      <section aria-labelledby="summary-heading">
+        <div class="section-title"><h2 id="summary-heading">The trip so far</h2><label>Adding as<select id="recorder"></select></label></div>
+        <div class="totals"><p>Group expenses<strong id="total">₹0.00</strong></p><p>Left to settle<strong id="outstanding">₹0.00</strong></p></div>
+        <div class="table-scroll"><table><caption class="sr-only">Member spending and remaining balances</caption><thead><tr><th>Person</th><th>Paid upfront</th><th>Personal share</th><th>Repaid</th><th>Received</th><th>Remaining balance</th></tr></thead><tbody id="balances"></tbody></table></div>
+        <p class="muted">Positive balances should receive money. Negative balances still need to pay.</p>
+      </section>
+      <div class="columns forms">
+        <section aria-labelledby="expense-heading"><h2 id="expense-heading">Add an expense</h2>
+          <form id="expense-form">
+            <label>Description<input name="description" maxlength="500" placeholder="e.g. Dinner by the beach" required></label>
+            <label>Amount in rupees<input name="amount" inputmode="decimal" placeholder="0.00" pattern="[0-9]+(\.[0-9]{1,2})?" required></label>
+            <label>Did you pay?<select id="did-pay"><option value="yes">Yes, I paid</option><option value="no">No, someone else paid</option></select></label>
+            <label id="payer-label" hidden>Paid by<select id="payer"></select></label>
+            <fieldset><legend>Who shared this expense?</legend><div id="participants"></div><button id="clear-participants" type="button" class="quiet">Clear all</button></fieldset>
+            <button id="expense-save">Save expense</button>
+          </form>
+        </section>
+        <section aria-labelledby="suggestions-heading"><h2 id="suggestions-heading">Suggested payments</h2><div id="suggestions"></div>
+          <h2 id="repayment-heading">Record a repayment</h2>
+          <p class="muted">Already paid by cash, UPI or bank transfer? Record it here. Pocket doesn’t move or verify money.</p>
+          <form id="settlement-form">
+            <div class="columns"><label>From<select id="sender"></select></label><label>To<select id="recipient"></select></label></div>
+            <label>Amount in rupees<input name="amount" inputmode="decimal" placeholder="0.00" pattern="[0-9]+(\.[0-9]{1,2})?" required></label>
+            <button id="settlement-save">Record repayment</button>
+          </form>
+        </section>
+      </div>
+      <section aria-labelledby="expenses-heading"><h2 id="expenses-heading">Expense history</h2><div id="expense-history"></div><nav class="pagination" aria-label="Expense pages"><button id="expense-prev" class="quiet">Previous</button><span id="expense-page"></span><button id="expense-next" class="quiet">Next</button></nav></section>
+      <section aria-labelledby="settlements-heading"><h2 id="settlements-heading">Repayment history</h2><div id="settlement-history"></div><nav class="pagination" aria-label="Repayment pages"><button id="settlement-prev" class="quiet">Previous</button><span id="settlement-page"></span><button id="settlement-next" class="quiet">Next</button></nav></section>
+    </div>
+  </main>
+  <footer>Pocket · INR only · Payments are recorded manually</footer>
+</body>
+</html>
