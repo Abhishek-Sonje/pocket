@@ -1,0 +1,11 @@
+services:
+  pocket:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - pocket-data:/data
+    restart: unless-stopped
+
+volumes:
+  pocket-data:
